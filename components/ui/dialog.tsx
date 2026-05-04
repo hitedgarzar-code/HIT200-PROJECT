@@ -9,29 +9,20 @@ const DialogTrigger = DialogPrimitive.Trigger
 const DialogPortal = DialogPrimitive.Portal
 const DialogClose = DialogPrimitive.Close
 
-const DialogOverlay = React.forwardRef
-  React.ElementRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(function DialogOverlay({ className, ...props }, ref) {
+function DialogOverlay({ className, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>) {
   return (
     <DialogPrimitive.Overlay
-      ref={ref}
       className={cn('fixed inset-0 z-50 bg-black/80', className)}
       {...props}
     />
   )
-})
-DialogOverlay.displayName = 'DialogOverlay'
+}
 
-const DialogContent = React.forwardRef
-  React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(function DialogContent({ className, children, ...props }, ref) {
+function DialogContent({ className, children, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
-        ref={ref}
         className={cn(
           'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 rounded-lg',
           className
@@ -42,8 +33,7 @@ const DialogContent = React.forwardRef
       </DialogPrimitive.Content>
     </DialogPortal>
   )
-})
-DialogContent.displayName = 'DialogContent'
+}
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -63,19 +53,14 @@ function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   )
 }
 
-const DialogTitle = React.forwardRef
-  React.ElementRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(function DialogTitle({ className, ...props }, ref) {
+function DialogTitle({ className, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      ref={ref}
       className={cn('text-lg font-semibold', className)}
       {...props}
     />
   )
-})
-DialogTitle.displayName = 'DialogTitle'
+}
 
 export {
   Dialog,
