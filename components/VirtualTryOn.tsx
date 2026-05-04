@@ -358,7 +358,9 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <Button className="w-full" onClick={() => setStep('size')}>Continue to Size Selection →</Button>
+                <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
+                  {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</> : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
+                </Button>
               </div>
             )}
           </div>
