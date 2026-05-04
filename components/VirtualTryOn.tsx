@@ -4,22 +4,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles, Camera, Upload, X, Loader2, Download,
-  RefreshCw, CheckCircle, Info, ChevronDown, ChevronUp,
+  RefreshCw, CheckCircle, Info,
 } from 'lucide-react'
-
-export interface SizeRow {
-  label: string
-  eu:    string
-  uk:    string
-  us:    string
-  chest?:  string
-  waist?:  string
-  hips?:   string
-  inseam?: string
-  foot?:   string
-}
-
-export type SizeRegion = 'EU' | 'UK' | 'US'
 
 interface Props {
   productName:      string
@@ -27,47 +13,7 @@ interface Props {
   productCategory?: string
 }
 
-type Step = 'upload' | 'size' | 'result'
-
-const TOPS: SizeRow[] = [
-  { label:'XS',  eu:'EU 32–34', uk:'UK 6–8',   us:'US 2–4',   chest:'80–85 cm',  waist:'60–65 cm', hips:'85–90 cm'  },
-  { label:'S',   eu:'EU 36–38', uk:'UK 8–10',  us:'US 4–6',   chest:'86–91 cm',  waist:'66–71 cm', hips:'91–96 cm'  },
-  { label:'M',   eu:'EU 38–40', uk:'UK 12–14', us:'US 8–10',  chest:'92–97 cm',  waist:'72–77 cm', hips:'97–102 cm' },
-  { label:'L',   eu:'EU 42–44', uk:'UK 16–18', us:'US 12–14', chest:'98–104 cm', waist:'78–84 cm', hips:'103–109 cm'},
-  { label:'XL',  eu:'EU 46–48', uk:'UK 20–22', us:'US 16–18', chest:'105–110 cm',waist:'85–90 cm', hips:'110–115 cm'},
-  { label:'XXL', eu:'EU 50–52', uk:'UK 24–26', us:'US 20–22', chest:'111–117 cm',waist:'91–97 cm', hips:'116–122 cm'},
-]
-
-const BOTTOMS: SizeRow[] = [
-  { label:'XS',  eu:'EU 32', uk:'UK 6',  us:'US 2',   waist:'60–63 cm', hips:'85–88 cm',  inseam:'76 cm' },
-  { label:'S',   eu:'EU 34', uk:'UK 8',  us:'US 4',   waist:'64–67 cm', hips:'89–92 cm',  inseam:'78 cm' },
-  { label:'M',   eu:'EU 36', uk:'UK 10', us:'US 6–8', waist:'68–72 cm', hips:'93–96 cm',  inseam:'80 cm' },
-  { label:'L',   eu:'EU 38', uk:'UK 12', us:'US 10',  waist:'73–77 cm', hips:'97–100 cm', inseam:'81 cm' },
-  { label:'XL',  eu:'EU 40', uk:'UK 14', us:'US 12',  waist:'78–83 cm', hips:'101–106 cm',inseam:'82 cm' },
-  { label:'XXL', eu:'EU 42', uk:'UK 16', us:'US 14',  waist:'84–90 cm', hips:'107–112 cm',inseam:'83 cm' },
-]
-
-const SHOES: SizeRow[] = [
-  { label:'35', eu:'EU 35', uk:'UK 2.5', us:'US W 5 / M 4',   foot:'22 cm'   },
-  { label:'36', eu:'EU 36', uk:'UK 3.5', us:'US W 6 / M 5',   foot:'22.5 cm' },
-  { label:'37', eu:'EU 37', uk:'UK 4.5', us:'US W 7 / M 6',   foot:'23.5 cm' },
-  { label:'38', eu:'EU 38', uk:'UK 5.5', us:'US W 8 / M 7',   foot:'24 cm'   },
-  { label:'39', eu:'EU 39', uk:'UK 6.5', us:'US W 9 / M 8',   foot:'24.5 cm' },
-  { label:'40', eu:'EU 40', uk:'UK 7.5', us:'US W 10 / M 9',  foot:'25 cm'   },
-  { label:'41', eu:'EU 41', uk:'UK 8.5', us:'US W 11 / M 10', foot:'26 cm'   },
-  { label:'42', eu:'EU 42', uk:'UK 9.5', us:'US W 12 / M 11', foot:'27 cm'   },
-]
-
-const CLOTHING_TYPES = [
-  { id:'T-Shirts',    label:'T-Shirt',   emoji:'👕', chart: TOPS    },
-  { id:'Hoodies',     label:'Hoodie',    emoji:'🧥', chart: TOPS    },
-  { id:'Jackets',     label:'Jacket',    emoji:'🥼', chart: TOPS    },
-  { id:'Dresses',     label:'Dress',     emoji:'👗', chart: TOPS    },
-  { id:'Pants',       label:'Pants',     emoji:'👖', chart: BOTTOMS },
-  { id:'Shorts',      label:'Shorts',    emoji:'🩳', chart: BOTTOMS },
-  { id:'Accessories', label:'Accessory', emoji:'👜', chart: TOPS    },
-  { id:'Shoes',       label:'Shoes',     emoji:'👟', chart: SHOES   },
-]
+type Step = 'upload' | 'result'
 
 const STYLE_TIPS: Record<string, string[]> = {
   'T-Shirts':    ['Layer with an open button-up for smart-casual flair.', 'Tuck into high-waisted bottoms to define the waist.'],
@@ -80,14 +26,6 @@ const STYLE_TIPS: Record<string, string[]> = {
   'Shorts':      ['Balance loose shorts with a fitted top.', 'Bermuda styles work well with loafers.'],
 }
 
-const REGION_CONFIG: Record<SizeRegion, { flag: string; label: string; key: keyof SizeRow }> = {
-  EU: { flag: '🇪🇺', label: 'EU', key: 'eu' },
-  UK: { flag: '🇬🇧', label: 'UK', key: 'uk' },
-  US: { flag: '🇺🇸', label: 'US', key: 'us' },
-}
-
-const LS_KEY = 'tryon_size_region'
-
 function normalizeClothingType(cat?: string): string {
   const value = (cat || '').toLowerCase()
   if (value.includes('shoe') || value.includes('sneaker') || value.includes('boot')) return 'Shoes'
@@ -98,16 +36,6 @@ function normalizeClothingType(cat?: string): string {
   if (value.includes('hoodie') || value.includes('sweater')) return 'Hoodies'
   if (value.includes('accessor') || value.includes('bag') || value.includes('belt') || value.includes('scarf')) return 'Accessories'
   return 'T-Shirts'
-}
-
-function getChartForCategory(cat?: string): SizeRow[] {
-  const found = CLOTHING_TYPES.find(c => c.id === normalizeClothingType(cat))
-  return found?.chart ?? TOPS
-}
-
-function getClothingLabel(cat?: string): string {
-  const found = CLOTHING_TYPES.find(c => c.id === normalizeClothingType(cat))
-  return found?.label ?? 'Item'
 }
 
 function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
@@ -136,46 +64,21 @@ function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
 }
 
 export default function VirtualTryOn({ productName, productImage, productCategory }: Props) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [step, setStep]     = useState<Step>('upload')
-  const [activeInfoTab, setActiveInfoTab] = useState<'sizes' | 'tips'>('sizes')
-  const [showSizeChart, setShowSizeChart] = useState(false)
-
-  const [userPhoto, setUserPhoto]           = useState<string | null>(null)
+  const [isOpen, setIsOpen]             = useState(false)
+  const [step, setStep]                 = useState<Step>('upload')
+  const [userPhoto, setUserPhoto]       = useState<string | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
-  const [dragOver, setDragOver]             = useState(false)
-
-  const [region, setRegion]           = useState<SizeRegion>('EU')
-  const [selectedSize, setSelectedSize] = useState<string>('')
-
+  const [dragOver, setDragOver]         = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [resultImage, setResultImage]   = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
+  const [activeInfoTab, setActiveInfoTab] = useState<'tips'>('tips')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef     = useRef<HTMLVideoElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
-  const clothingType  = normalizeClothingType(productCategory)
-  const clothingLabel = getClothingLabel(productCategory)
-  const sizeChart     = getChartForCategory(productCategory)
-  const selectedRow   = sizeChart.find(r => r.label === selectedSize)
-  const regionCfg     = REGION_CONFIG[region]
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(LS_KEY) as SizeRegion | null
-      if (saved === 'EU' || saved === 'UK' || saved === 'US') setRegion(saved)
-    } catch { /* ignore */ }
-  }, [])
-
-  useEffect(() => {
-    const chart = getChartForCategory(productCategory)
-    if (!chart.find(r => r.label === selectedSize)) {
-      setSelectedSize(chart[2]?.label ?? '')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCategory])
+  const clothingType = normalizeClothingType(productCategory)
 
   const startCamera = async () => {
     setError(null)
@@ -217,19 +120,12 @@ export default function VirtualTryOn({ productName, productImage, productCategor
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }
-  const handleDrop        = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f) }
-
-  const changeRegion = (r: SizeRegion) => {
-    setRegion(r)
-    try { localStorage.setItem(LS_KEY, r) } catch { /* ignore */ }
-  }
+  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f) }
 
   const generate = async () => {
     if (!userPhoto)    { setError('Please upload a photo first.'); return }
-    if (!selectedSize) { setError('Please select a size before generating.'); return }
     if (!productImage) { setError('This product does not have an image for virtual try-on.'); return }
     setIsGenerating(true); setError(null); setResultImage(null)
-
     try {
       const res = await fetch('/api/virtual-tryon', {
         method: 'POST',
@@ -238,18 +134,15 @@ export default function VirtualTryOn({ productName, productImage, productCategor
           productImage,
           userPhoto,
           garmentName: productName,
-          preferences: { size: selectedSize, category: clothingType },
+          preferences: { category: clothingType },
         }),
       })
-
       const ct = res.headers.get('content-type') ?? ''
       if (!ct.includes('application/json')) throw new Error('Try-on service returned an invalid response')
-
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generation failed')
       if (!data.image) throw new Error(data.message || 'No image returned by try-on service')
-      if (data.fallback) throw new Error('The service returned a preview instead of a real try-on. Check your API key and try again.')
-
+      if (data.fallback) throw new Error('The service returned a preview. Check your API key and try again.')
       setResultImage(data.image)
       setStep('result')
     } catch (e: any) {
@@ -289,19 +182,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
       </div>
 
       <div className="p-5 space-y-5">
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs text-neutral-500">
-          {(['upload', 'size', 'result'] as Step[]).map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === s ? 'bg-primary text-white' : 'bg-neutral-200 text-neutral-500'}`}>
-                {i + 1}
-              </div>
-              <span className={step === s ? 'text-primary font-medium' : ''}>{s === 'upload' ? 'Photo' : s === 'size' ? 'Size' : 'Result'}</span>
-              {i < 2 && <div className="w-4 h-px bg-neutral-200" />}
-            </div>
-          ))}
-        </div>
-
         {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm flex items-start gap-2">
@@ -358,65 +238,17 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
-                  {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</> : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
+                <Button
+                  className="w-full gap-2"
+                  onClick={generate}
+                  disabled={isGenerating}
+                >
+                  {isGenerating
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
+                    : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
                 </Button>
               </div>
             )}
-          </div>
-        )}
-
-        {/* STEP: Size */}
-        {step === 'size' && (
-          <div className="space-y-4">
-            {/* Region selector */}
-            <div className="flex gap-2">
-              {(Object.entries(REGION_CONFIG) as [SizeRegion, typeof REGION_CONFIG[SizeRegion]][]).map(([r, cfg]) => (
-                <button
-                  key={r}
-                  onClick={() => changeRegion(r)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${region === r ? 'bg-primary text-white border-primary' : 'border-neutral-200 text-neutral-600 hover:border-primary/40'}`}
-                >
-                  {cfg.flag} {cfg.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Size grid */}
-            <div className="grid grid-cols-3 gap-2">
-              {sizeChart.map(row => (
-                <button
-                  key={row.label}
-                  onClick={() => setSelectedSize(row.label)}
-                  className={`py-3 rounded-lg text-sm font-medium border transition-all ${selectedSize === row.label ? 'bg-primary text-white border-primary' : 'border-neutral-200 text-neutral-700 hover:border-primary/40'}`}
-                >
-                  <div className="font-bold">{row.label}</div>
-                  <div className="text-xs opacity-70">{row[regionCfg.key]}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Measurements */}
-            {selectedRow && (
-              <div className="bg-neutral-50 rounded-xl p-4 text-xs space-y-1">
-                {selectedRow.chest  && <div className="flex justify-between"><span className="text-neutral-500">Chest</span><span className="font-medium">{selectedRow.chest}</span></div>}
-                {selectedRow.waist  && <div className="flex justify-between"><span className="text-neutral-500">Waist</span><span className="font-medium">{selectedRow.waist}</span></div>}
-                {selectedRow.hips   && <div className="flex justify-between"><span className="text-neutral-500">Hips</span><span className="font-medium">{selectedRow.hips}</span></div>}
-                {selectedRow.inseam && <div className="flex justify-between"><span className="text-neutral-500">Inseam</span><span className="font-medium">{selectedRow.inseam}</span></div>}
-                {selectedRow.foot   && <div className="flex justify-between"><span className="text-neutral-500">Foot length</span><span className="font-medium">{selectedRow.foot}</span></div>}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep('upload')}>← Back</Button>
-              <Button
-                className="flex-1 gap-2"
-                onClick={generate}
-                disabled={isGenerating || !selectedSize}
-              >
-                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</> : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
-              </Button>
-            </div>
           </div>
         )}
 
@@ -433,31 +265,24 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
             {/* Style tips */}
             <div className="bg-neutral-50 rounded-xl p-4">
-              <div className="flex gap-4 mb-3 border-b border-neutral-200 pb-2">
-                <button onClick={() => setActiveInfoTab('sizes')} className={`text-xs font-semibold pb-1 ${activeInfoTab === 'sizes' ? 'text-primary border-b-2 border-primary' : 'text-neutral-500'}`}>Size Info</button>
-                <button onClick={() => setActiveInfoTab('tips')}  className={`text-xs font-semibold pb-1 ${activeInfoTab === 'tips'  ? 'text-primary border-b-2 border-primary' : 'text-neutral-500'}`}>Style Tips</button>
-              </div>
-              {activeInfoTab === 'sizes' && selectedRow && (
-                <div className="text-xs space-y-1">
-                  <p className="font-medium text-neutral-700 mb-2">Your selected size: {selectedSize} ({selectedRow[regionCfg.key]})</p>
-                  {selectedRow.chest  && <div className="flex justify-between"><span className="text-neutral-500">Chest</span><span>{selectedRow.chest}</span></div>}
-                  {selectedRow.waist  && <div className="flex justify-between"><span className="text-neutral-500">Waist</span><span>{selectedRow.waist}</span></div>}
-                  {selectedRow.hips   && <div className="flex justify-between"><span className="text-neutral-500">Hips</span><span>{selectedRow.hips}</span></div>}
-                </div>
-              )}
-              {activeInfoTab === 'tips' && (
-                <ul className="text-xs text-neutral-600 space-y-2">
-                  {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
-                    <li key={tip} className="flex items-start gap-2"><span className="text-primary mt-0.5">•</span>{tip}</li>
-                  ))}
-                </ul>
-              )}
+              <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
+              <ul className="text-xs text-neutral-600 space-y-2">
+                {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
+                  <li key={tip} className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>{tip}
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={reset}><RefreshCw className="w-4 h-4" />Try Again</Button>
+              <Button variant="outline" className="gap-2" onClick={reset}>
+                <RefreshCw className="w-4 h-4" />Try Again
+              </Button>
               <a href={resultImage} download="try-on-result.jpg" className="flex-1">
-                <Button className="w-full gap-2"><Download className="w-4 h-4" />Download</Button>
+                <Button className="w-full gap-2">
+                  <Download className="w-4 h-4" />Download
+                </Button>
               </a>
             </div>
           </div>
