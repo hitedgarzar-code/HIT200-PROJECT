@@ -1,6 +1,7 @@
-
+{
 "functions": {
   "app/api/virtual-tryon/route.ts": {
     "maxDuration": 90
   }
+}
 }
