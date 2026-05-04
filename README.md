@@ -1,5 +1,9 @@
 # edgARs Fashion Store - Premium E-Commerce Platform
 
+
+
+
+
 A modern, fully-functional e-commerce platform for fashion retail built with Next.js 15, React, Supabase, and Tailwind CSS. Features include product browsing, shopping cart, user authentication, order management, and an admin dashboard.
 
 ## 🎯 Features
