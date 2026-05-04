@@ -1,5 +1,5 @@
-"functions": {
-  "app/api/virtual-tryon/route.ts": {
-    "maxDuration": 90
-  }
+{
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
+  "framework": "nextjs"
 }
