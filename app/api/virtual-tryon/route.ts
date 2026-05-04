@@ -3,24 +3,21 @@ import { NextRequest, NextResponse } from 'next/server'
 /**
  * POST /api/virtual-tryon
  * ──────────────────────────────────────────────────────────────────────────
- * Accepts the user's uploaded photo + the product image URL, sends both to
- * Claid's ai-fashion-models endpoint, and returns the composited try-on image.
+ * Genlook Virtual Try-On API  (api.genlook.app)
  *
- * Request body:
- *   productImage  string   URL or base64 of the clothing item
- *   userPhoto     string   base64 data-URL of the user's uploaded photo
- *   garmentName   string   Display name for fallback SVG composite
- *   preferences   object   { size, category } — passed through for metadata
+ * Flow (4 steps per Genlook docs):
+ *  1. Register product  → POST /tryon/v1/products        (externalId keyed by product URL)
+ *  2. Upload user photo → POST /tryon/v1/images/upload   (multipart)  → imageId
+ *  3. Create try-on     → POST /tryon/v1/try-on           → generationId
+ *  4. Poll result       → GET  /tryon/v1/generations/:id  → resultImageUrl
  *
- * Response:
- *   { success, fallback, image, message }
- *
- * Requires CLAID_API_KEY for real AI try-on.
+ * Auth header: x-api-key (NOT Bearer)
+ * Requires GENLOOK_API_KEY in .env.local
  */
 
 export const maxDuration = 90
 
-const CLAID_BASE = 'https://api.claid.ai/v1'
+const BASE = 'https://api.genlook.app/tryon/v1'
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,127 +25,117 @@ export async function POST(request: NextRequest) {
     const { productImage, userPhoto, garmentName, preferences } = body
 
     if (!productImage) {
-      return NextResponse.json({ error: 'productImage is required' }, { status: 400 })
+      return err('productImage is required', 400)
     }
-
     if (!userPhoto) {
-      return NextResponse.json({ error: 'userPhoto is required for real try-on' }, { status: 400 })
+      return err('userPhoto is required for real try-on', 400)
     }
 
-    const apiKey = process.env.CLAID_API_KEY
+    const apiKey = process.env.GENLOOK_API_KEY
     if (!apiKey) {
-      return NextResponse.json({
-        error: 'Real virtual try-on requires CLAID_API_KEY in .env.local. Restart the dev server after adding it.',
-      }, { status: 500 })
+      return err('GENLOOK_API_KEY is missing from .env.local. Add it and restart the dev server.', 500)
     }
 
-    // ── Build Claid payload ────────────────────────────────────────────────
-    // Claid's fashion endpoint needs URL/storage inputs. Browser uploads arrive
-    // as data URLs, so upload them to Claid first and use the returned tmp_url
-    // as the exact model image. This keeps the shopper photo and changes only
-    // the clothing with the selected product image.
-    const modelImage = await resolveClaidInputImage(userPhoto, apiKey, 'uploaded person photo')
-    const clothingImage = await resolveClaidInputImage(productImage, apiKey, 'selected product image')
+    const headers = { 'x-api-key': apiKey }
 
-    const claidBody: Record<string, unknown> = {
-      input: {
-        model: modelImage,
-        clothing: [clothingImage],
-      },
-      output: {
-        format:           'jpeg',
-        number_of_images: 1,
-      },
-      options: {
-        aspect_ratio: '3:4',
-        pose: 'preserve the uploaded person, body shape, face, pose and camera angle; replace only the visible clothing with the selected product',
-        background: 'preserve the original uploaded photo background as much as possible',
-      },
-    }
+    // ── Step 1: Register product ─────────────────────────────────────────────
+    // externalId must be stable per product. We derive one from the image URL.
+    // Genlook ignores duplicate externalIds so this is safe to call each time.
+    const externalId = slugify(productImage)
 
-    // ── Step 1: Submit job ─────────────────────────────────────────────────
-    const submitRes = await fetch(`${CLAID_BASE}/image/ai-fashion-models`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type':  'application/json',
-      },
-      body: JSON.stringify(claidBody),
+    const productRes = await fetch(`${BASE}/products`, {
+      method:  'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        externalId,
+        title:       garmentName ?? 'Product',
+        description: preferences?.category ?? '',
+        imageUrls:   [productImage],
+      }),
     })
 
-    const submitText = await submitRes.text()
-    if (!submitRes.ok) {
-      console.error('[VirtualTryOn] Claid submit error:', submitRes.status, submitText.slice(0, 300))
-      return errorResponse(`Claid rejected the real try-on request (${submitRes.status}). Check that the uploaded photo shows a person clearly and the product image is reachable.`, 502)
+    if (!productRes.ok) {
+      const txt = await productRes.text()
+      console.error('[VirtualTryOn] Genlook product registration error:', productRes.status, txt.slice(0, 300))
+      return err(`Failed to register product with Genlook (${productRes.status}). Make sure the product image is a publicly accessible URL.`, 502)
     }
 
-    let submitData: any
-    try { submitData = JSON.parse(submitText) } catch {
-      return errorResponse('Claid returned an invalid response while starting the real try-on.', 502)
+    // ── Step 2: Upload customer photo ────────────────────────────────────────
+    // The frontend sends a base64 data-URL. We convert it to a Blob for multipart upload.
+    let imageId: string
+    try {
+      imageId = await uploadCustomerPhoto(userPhoto, apiKey)
+    } catch (uploadErr: any) {
+      return err(uploadErr.message || 'Failed to upload your photo to Genlook.', 502)
     }
 
-    const taskId = submitData?.data?.id
-    if (!taskId) {
-      return errorResponse('Claid did not return a task ID for the real try-on.', 502)
+    // ── Step 3: Create try-on ────────────────────────────────────────────────
+    const tryonRes = await fetch(`${BASE}/try-on`, {
+      method:  'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId:       externalId,
+        customerImageId: imageId,
+      }),
+    })
+
+    if (!tryonRes.ok) {
+      const txt = await tryonRes.text()
+      console.error('[VirtualTryOn] Genlook try-on creation error:', tryonRes.status, txt.slice(0, 300))
+
+      if (tryonRes.status === 402) {
+        return err('Your Genlook account has no credits. Add credits at app.genlook.app.', 402)
+      }
+      return err(`Genlook rejected the try-on request (${tryonRes.status}). Check that your photo shows a person clearly.`, 502)
     }
 
-    // ── Step 2: Poll every 2s up to 25 attempts (50s total) ───────────────
-    for (let i = 0; i < 25; i++) {
+    const tryonData = await tryonRes.json()
+    const generationId = tryonData?.generationId ?? tryonData?.id ?? null
+
+    if (!generationId) {
+      return err('Genlook did not return a generation ID.', 502)
+    }
+
+    // ── Step 4: Poll every 2s up to 30 attempts (~60s) ──────────────────────
+    for (let i = 0; i < 30; i++) {
       await sleep(2000)
 
-      const pollRes = await fetch(`${CLAID_BASE}/image/ai-fashion-models/${taskId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+      const pollRes = await fetch(`${BASE}/generations/${generationId}`, {
+        headers,
       })
+
       if (!pollRes.ok) continue
 
       const pollData = await pollRes.json()
-      const d        = pollData?.data
-      const status   = d?.status
+      const status   = pollData?.status
 
-      if (status === 'DONE') {
-        const result = d?.result
-
-        // Walk all known URL paths in the Claid response schema
-        const url =
-          result?.output_objects?.[0]?.tmp_url        ||
-          result?.output_objects?.[0]?.url             ||
-          result?.output_objects?.[0]?.object?.tmp_url ||
-          result?.output_objects?.[0]?.object?.url     ||
-          result?.[0]?.tmp_url                         ||
-          result?.[0]?.url                             ||
-          result?.output?.tmp_url                       ||
-          result?.output?.url                           ||
-          result?.tmp_url                               ||
-          result?.url                                   ||
-          d?.tmp_url                                   ||
-          d?.url                                       ||
-          null
-
+      if (status === 'COMPLETED') {
+        const url = pollData?.resultImageUrl ?? pollData?.result?.url ?? null
         if (url) {
           return NextResponse.json({
-            success: true,
+            success:  true,
             fallback: false,
-            image:   url,
-            message: 'Try-on generated successfully.',
+            image:    url,
+            message:  'Try-on generated successfully.',
           })
         }
-
-        console.warn('[VirtualTryOn] DONE but no URL. result keys:', Object.keys(result ?? {}).join(', '))
-        return errorResponse('Claid finished the try-on but did not return an image URL.', 502)
+        console.warn('[VirtualTryOn] COMPLETED but no URL. Keys:', Object.keys(pollData).join(', '))
+        return err('Genlook completed but did not return an image URL.', 502)
       }
 
-      if (status === 'ERROR') {
-        console.error('[VirtualTryOn] Claid generation error:', d?.errors)
-        return errorResponse('Claid could not generate the real try-on from this photo/product pair. Try a clearer full-body photo and a product image with the clothing visible.', 502)
+      if (status === 'FAILED' || status === 'ERROR') {
+        console.error('[VirtualTryOn] Genlook generation failed:', pollData)
+        return err('Genlook could not generate the try-on. Try a clearer full-body photo with the clothing visible.', 502)
       }
+
+      // status is still PENDING / PROCESSING — keep polling
     }
 
-    return errorResponse('Real try-on timed out. Please try again.', 504)
+    return err('Try-on timed out after 60 seconds. Please try again.', 504)
 
-  } catch (err: any) {
-    console.error('[VirtualTryOn] unexpected error:', err)
-    const message = err?.message || 'Real try-on failed unexpectedly.'
-    return errorResponse(message, 500)
+  } catch (e: any) {
+    console.error('[VirtualTryOn] Unexpected error:', e)
+    return err(e?.message || 'Try-on failed unexpectedly.', 500)
   }
 }
 
@@ -158,144 +145,84 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function resolveClaidInputImage(image: string, apiKey: string, name: string): Promise<string> {
-  if (typeof image !== 'string' || !image.trim()) {
-    throw new Error(`${name} image is required`)
-  }
-
-  if (!image.startsWith('data:')) {
-    return image
-  }
-
-  return uploadDataUrlToClaid(image, apiKey, name)
+function err(error: string, status: number) {
+  return NextResponse.json({ success: false, fallback: false, error }, { status })
 }
 
-async function uploadDataUrlToClaid(dataUrl: string, apiKey: string, name: string): Promise<string> {
-  const file = dataUrlToFile(dataUrl, `${name}-${Date.now()}`)
+/**
+ * Converts a URL or base64 data-URL into a stable short slug
+ * usable as a Genlook externalId (max ~200 chars).
+ */
+function slugify(input: string): string {
+  if (input.startsWith('data:')) {
+    // base64 product image — use a hash of the first 200 chars
+    return 'b64-' + simpleHash(input.slice(0, 200))
+  }
+  // URL — strip protocol and special chars, truncate
+  return input.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 120)
+}
+
+function simpleHash(str: string): string {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
+  }
+  return Math.abs(h).toString(36)
+}
+
+/**
+ * Uploads a base64 data-URL (or raw URL string) as a multipart form to Genlook.
+ * Returns the imageId from the response.
+ */
+async function uploadCustomerPhoto(photo: string, apiKey: string): Promise<string> {
   const form = new FormData()
 
-  form.append('file', file.blob, file.filename)
-  form.append('data', JSON.stringify({
-    operations: {
-      resizing: {
-        width: 1200,
-        fit: 'bounds',
-      },
-      background: {
-        remove: false,
-      },
-    },
-    output: {
-      format: 'jpeg',
-    },
-  }))
+  if (photo.startsWith('data:')) {
+    // Convert base64 data-URL → Blob
+    const match = photo.match(/^data:([^;,]+)(;base64)?,(.*)$/)
+    if (!match) throw new Error('Invalid photo data-URL format.')
 
-  const uploadRes = await fetch(`${CLAID_BASE}/image/edit/upload`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: form,
+    const mime       = match[1]
+    const isBase64   = Boolean(match[2])
+    const payload    = match[3]
+    const bytes      = isBase64
+      ? Buffer.from(payload, 'base64')
+      : Buffer.from(decodeURIComponent(payload), 'utf8')
+    const ext        = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg'
+
+    form.append('file', new Blob([bytes], { type: mime }), `customer-photo.${ext}`)
+  } else {
+    // It's a URL — fetch it first, then upload the bytes
+    const imgRes = await fetch(photo)
+    if (!imgRes.ok) throw new Error('Could not fetch the photo URL to upload.')
+    const blob = await imgRes.blob()
+    form.append('file', blob, 'customer-photo.jpg')
+  }
+
+  const uploadRes = await fetch(`https://api.genlook.app/tryon/v1/images/upload`, {
+    method:  'POST',
+    headers: { 'x-api-key': apiKey },
+    body:    form,
   })
 
   const uploadText = await uploadRes.text()
+
   if (!uploadRes.ok) {
-    console.error(`[VirtualTryOn] Claid ${name} upload error:`, uploadRes.status, uploadText.slice(0, 300))
-    throw new Error(getClaidUploadError(name, uploadRes.status, uploadText))
+    console.error('[VirtualTryOn] Genlook image upload error:', uploadRes.status, uploadText.slice(0, 300))
+    if (uploadRes.status === 413) throw new Error('Your photo is too large. Please use a photo under 10 MB.')
+    if (uploadRes.status === 422) throw new Error('Genlook could not process your photo. Please use a clear JPG, PNG, or WebP.')
+    throw new Error(`Failed to upload your photo (status ${uploadRes.status}).`)
   }
 
   let uploadData: any
-  try {
-    uploadData = JSON.parse(uploadText)
-  } catch {
-    throw new Error(`Invalid JSON from Claid ${name} upload`)
+  try { uploadData = JSON.parse(uploadText) } catch {
+    throw new Error('Genlook returned an invalid response while uploading your photo.')
   }
 
-  const url =
-    uploadData?.data?.output?.tmp_url ||
-    uploadData?.data?.output?.url ||
-    uploadData?.data?.output?.object?.tmp_url ||
-    uploadData?.data?.output?.object?.url ||
-    uploadData?.data?.output?.claid_storage_uri ||
-    uploadData?.data?.tmp_url ||
-    uploadData?.data?.url ||
-    uploadData?.data?.object?.tmp_url ||
-    uploadData?.data?.object?.url ||
-    null
-
-  if (!url) {
-    console.error(`[VirtualTryOn] Claid ${name} upload response without URL:`, uploadText.slice(0, 500))
-    throw new Error(`Claid prepared the ${name}, but did not return an image URL.`)
+  const imageId = uploadData?.imageId ?? uploadData?.id ?? null
+  if (!imageId) {
+    throw new Error('Genlook uploaded the photo but did not return an image ID.')
   }
 
-  return url
-}
-
-function getClaidUploadError(name: string, status: number, body: string): string {
-  if (status === 401 || status === 403) {
-    return `Could not prepare the ${name}. Your CLAID_API_KEY is present, but it is not allowed to use Claid image upload/editing. Enable Image Editing permission for the key, or create a new Claid API key with Image Editing and AI Fashion Models access.`
-  }
-
-  if (status === 402) {
-    return 'Claid rejected the image upload because the account has no remaining credits.'
-  }
-
-  if (status === 413) {
-    return `The ${name} is too large for Claid. Try a smaller photo.`
-  }
-
-  if (status === 422) {
-    return `Claid could not process the ${name}. Use a clear JPG/PNG/WEBP image and make sure the photo is not corrupted.`
-  }
-
-  if (status === 429) {
-    return 'Claid rate limit reached. Wait a moment and try again.'
-  }
-
-  return `Could not prepare the ${name} for real try-on. Claid upload failed with status ${status}.`
-}
-
-function dataUrlToFile(dataUrl: string, filenameBase: string): { blob: Blob; filename: string } {
-  const match = dataUrl.match(/^data:([^;,]+)(;base64)?,(.*)$/)
-  if (!match) {
-    throw new Error('Invalid uploaded image data')
-  }
-
-  const mime = match[1]
-  const isBase64 = Boolean(match[2])
-  const payload = match[3]
-  const bytes = isBase64
-    ? Buffer.from(payload, 'base64')
-    : Buffer.from(decodeURIComponent(payload), 'utf8')
-  const ext = mimeToExtension(mime)
-
-  return {
-    blob: new Blob([bytes], { type: mime }),
-    filename: `${filenameBase}.${ext}`,
-  }
-}
-
-function mimeToExtension(mime: string): string {
-  switch (mime) {
-    case 'image/png':
-      return 'png'
-    case 'image/webp':
-      return 'webp'
-    case 'image/avif':
-      return 'avif'
-    case 'image/heic':
-      return 'heic'
-    case 'image/jpeg':
-    case 'image/jpg':
-    default:
-      return 'jpg'
-  }
-}
-
-function errorResponse(error: string, status: number) {
-  return NextResponse.json({
-    success: false,
-    fallback: false,
-    error,
-  }, { status })
+  return imageId
 }
