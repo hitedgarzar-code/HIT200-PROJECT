@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles, Camera, Upload, X, Loader2, Download,
@@ -64,15 +64,14 @@ function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
 }
 
 export default function VirtualTryOn({ productName, productImage, productCategory }: Props) {
-  const [isOpen, setIsOpen]             = useState(false)
-  const [step, setStep]                 = useState<Step>('upload')
-  const [userPhoto, setUserPhoto]       = useState<string | null>(null)
+  const [isOpen, setIsOpen]                 = useState(false)
+  const [step, setStep]                     = useState<Step>('upload')
+  const [userPhoto, setUserPhoto]           = useState<string | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
-  const [dragOver, setDragOver]         = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [resultImage, setResultImage]   = useState<string | null>(null)
-  const [error, setError]               = useState<string | null>(null)
-  const [activeInfoTab, setActiveInfoTab] = useState<'tips'>('tips')
+  const [dragOver, setDragOver]             = useState(false)
+  const [isGenerating, setIsGenerating]     = useState(false)
+  const [resultImage, setResultImage]       = useState<string | null>(null)
+  const [error, setError]                   = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef     = useRef<HTMLVideoElement>(null)
@@ -80,15 +79,29 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
   const clothingType = normalizeClothingType(productCategory)
 
+  // ── FIX 1: improved startCamera with muted + onloadedmetadata ──
   const startCamera = async () => {
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
       })
-      if (videoRef.current) { videoRef.current.srcObject = stream; setIsCameraActive(true) }
-    } catch {
-      setError('Cannot access camera. Please allow camera permissions or use file upload.')
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {})
+        }
+        setIsCameraActive(true)
+      }
+    } catch (e: any) {
+      if (e.name === 'NotAllowedError') {
+        setError('Camera permission denied. Please allow camera access in your browser settings.')
+      } else if (e.name === 'NotFoundError') {
+        setError('No camera found on this device. Please use file upload instead.')
+      } else {
+        setError('Cannot access camera. Please use file upload instead.')
+      }
     }
   }
 
@@ -119,8 +132,13 @@ export default function VirtualTryOn({ productName, productImage, productCategor
     catch { setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.') }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }
-  const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f) }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (f) void handleFile(f)
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false)
+    const f = e.dataTransfer.files?.[0]; if (f) void handleFile(f)
+  }
 
   const generate = async () => {
     if (!userPhoto)    { setError('Please upload a photo first.'); return }
@@ -170,7 +188,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
@@ -182,7 +199,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
       </div>
 
       <div className="p-5 space-y-5">
-        {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm flex items-start gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -190,7 +206,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
           </div>
         )}
 
-        {/* STEP: Upload */}
         {step === 'upload' && (
           <div className="space-y-4">
             {!userPhoto && !isCameraActive && (
@@ -221,11 +236,16 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
             {isCameraActive && (
               <div className="space-y-3">
-                <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl bg-black aspect-video object-cover" />
+                {/* ── FIX 2: added muted attribute ── */}
+                <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-xl bg-black aspect-video object-cover" />
                 <canvas ref={canvasRef} className="hidden" />
                 <div className="flex gap-2">
-                  <Button className="flex-1" onClick={capturePhoto}><Camera className="w-4 h-4 mr-2" />Capture</Button>
-                  <Button variant="outline" onClick={stopCamera}><X className="w-4 h-4" /></Button>
+                  <Button className="flex-1" onClick={capturePhoto}>
+                    <Camera className="w-4 h-4 mr-2" />Capture
+                  </Button>
+                  <Button variant="outline" onClick={stopCamera}>
+                    <X className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             )}
@@ -234,15 +254,14 @@ export default function VirtualTryOn({ productName, productImage, productCategor
               <div className="space-y-3">
                 <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
                   <img src={userPhoto} alt="Your photo" className="w-full h-full object-cover" />
-                  <button onClick={() => { setUserPhoto(null); setResultImage(null) }} className="absolute top-2 right-2 bg-white/80 rounded-full p-1">
+                  <button
+                    onClick={() => { setUserPhoto(null); setResultImage(null) }}
+                    className="absolute top-2 right-2 bg-white/80 rounded-full p-1"
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <Button
-                  className="w-full gap-2"
-                  onClick={generate}
-                  disabled={isGenerating}
-                >
+                <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
                   {isGenerating
                     ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
                     : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
@@ -252,7 +271,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
           </div>
         )}
 
-        {/* STEP: Result */}
         {step === 'result' && resultImage && (
           <div className="space-y-4">
             <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
@@ -262,8 +280,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                 Try-on complete
               </div>
             </div>
-
-            {/* Style tips */}
             <div className="bg-neutral-50 rounded-xl p-4">
               <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
               <ul className="text-xs text-neutral-600 space-y-2">
@@ -274,7 +290,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                 ))}
               </ul>
             </div>
-
             <div className="flex gap-2">
               <Button variant="outline" className="gap-2" onClick={reset}>
                 <RefreshCw className="w-4 h-4" />Try Again
