@@ -38,6 +38,56 @@ function normalizeClothingType(cat?: string): string {
   return 'T-Shirts'
 }
 
+async function analyzeSizeFromPhoto(photoDataUrl: string, category: string): Promise<string | null> {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/jpeg',
+                  data: photoDataUrl.replace(/^data:image\/\w+;base64,/, ''),
+                },
+              },
+              {
+                type: 'text',
+                text: `You are a fashion sizing expert. Look at this person's photo and suggest the most appropriate clothing size for them for a ${category} garment.
+
+Analyze visible body proportions — shoulder width, torso length, overall build — and return ONLY a JSON object like this, no other text:
+{"size": "M", "confidence": "high", "reason": "Broad shoulders and athletic build suggest a medium"}
+
+Size options are: XS, S, M, L, XL, XXL
+Confidence options are: low, medium, high
+
+If you cannot determine size from the photo, return:
+{"size": "M", "confidence": "low", "reason": "Could not determine size from photo"}`,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    const data = await response.json()
+    const text = data.content?.[0]?.text ?? ''
+    const clean = text.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+    return parsed.size ?? null
+  } catch {
+    return null
+  }
+}
+
+
 function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -83,6 +133,8 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
 
 const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [suggestedSize, setSuggestedSize] = useState<string | null>(null)
+const [isAnalyzing, setIsAnalyzing]     = useState(false)
 
   
 const startCamera = async (facing: 'user' | 'environment' = facingMode) => {
@@ -130,24 +182,43 @@ const flipCamera = () => {
     }
   }, [])
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return
-    const ctx = canvasRef.current.getContext('2d')!
-    canvasRef.current.width  = videoRef.current.videoWidth
-    canvasRef.current.height = videoRef.current.videoHeight
-    ctx.drawImage(videoRef.current, 0, 0)
-    setUserPhoto(canvasRef.current.toDataURL('image/jpeg', 0.9))
-    setResultImage(null)
-    stopCamera()
-  }
+const capturePhoto = async () => {
+  if (!videoRef.current || !canvasRef.current) return
+  const ctx = canvasRef.current.getContext('2d')!
+  canvasRef.current.width  = videoRef.current.videoWidth
+  canvasRef.current.height = videoRef.current.videoHeight
+  ctx.drawImage(videoRef.current, 0, 0)
+  const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9)
+  setUserPhoto(dataUrl)
+  setResultImage(null)
+  setSuggestedSize(null)
+  stopCamera()
+  // Analyze size in background
+  setIsAnalyzing(true)
+  const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
+  setSuggestedSize(size)
+  setIsAnalyzing(false)
+}
 
-  const handleFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) { setError('Please upload an image file (JPG, PNG, or WEBP).'); return }
-    if (file.size > 10 * 1024 * 1024)   { setError('File too large — maximum size is 10 MB.'); return }
-    setError(null); setResultImage(null)
-    try { setUserPhoto(await resizeImageToDataUrl(file)) }
-    catch { setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.') }
+
+const handleFile = async (file: File) => {
+  if (!file.type.startsWith('image/')) { setError('Please upload an image file (JPG, PNG, or WEBP).'); return }
+  if (file.size > 10 * 1024 * 1024)   { setError('File too large — maximum size is 10 MB.'); return }
+  setError(null); setResultImage(null); setSuggestedSize(null)
+  try {
+    const dataUrl = await resizeImageToDataUrl(file)
+    setUserPhoto(dataUrl)
+    // Analyze size in background
+    setIsAnalyzing(true)
+    const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
+    setSuggestedSize(size)
+  } catch {
+    setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.')
+  } finally {
+    setIsAnalyzing(false)
   }
+}
+  
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (f) void handleFile(f)
@@ -262,7 +333,6 @@ const flipCamera = () => {
         muted
         className="w-full rounded-xl bg-black aspect-video object-cover"
       />
-      {/* Flip camera button overlay */}
       <button
         onClick={flipCamera}
         className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all"
@@ -270,7 +340,6 @@ const flipCamera = () => {
       >
         <RefreshCw className="w-4 h-4" />
       </button>
-      {/* Camera label */}
       <div className="absolute bottom-2 left-2 bg-black/40 text-white text-xs px-2 py-1 rounded-full">
         {facingMode === 'user' ? '🤳 Front' : '📷 Back'}
       </div>
@@ -294,63 +363,73 @@ const flipCamera = () => {
   </>
 )}
 
+{userPhoto && (
+  <div className="space-y-3">
+    <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
+      <img src={userPhoto} alt="Your photo" className="w-full h-full object-cover" />
+      <button
+        onClick={() => { setUserPhoto(null); setResultImage(null); setSuggestedSize(null) }}
+        className="absolute top-2 right-2 bg-white/80 rounded-full p-1"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
 
+    {/* ── Size suggestion goes HERE inside userPhoto block ── */}
+    {isAnalyzing && (
+      <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Analysing your photo for size recommendation…
+      </div>
+    )}
+    {suggestedSize && !isAnalyzing && (
+      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+        <div>
+          <p className="text-xs font-semibold text-green-800">
+            Recommended size: <span className="text-base font-bold">{suggestedSize}</span>
+          </p>
+          <p className="text-xs text-green-600">Based on your photo analysis</p>
+        </div>
+      </div>
+    )}
 
+    <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
+      {isGenerating
+        ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
+        : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
+    </Button>
+  </div>
+)}
 
-
-            {userPhoto && (
-              <div className="space-y-3">
-                <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
-                  <img src={userPhoto} alt="Your photo" className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => { setUserPhoto(null); setResultImage(null) }}
-                    className="absolute top-2 right-2 bg-white/80 rounded-full p-1"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
-                  {isGenerating
-                    ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
-                    : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {step === 'result' && resultImage && (
-          <div className="space-y-4">
-            <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
-              <img src={resultImage} alt="Try-on result" className="w-full h-full object-cover" />
-              <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" />
-                Try-on complete
-              </div>
-            </div>
-            <div className="bg-neutral-50 rounded-xl p-4">
-              <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
-              <ul className="text-xs text-neutral-600 space-y-2">
-                {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
-                  <li key={tip} className="flex items-start gap-2">
-                    <span className="text-primary mt-0.5">•</span>{tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={reset}>
-                <RefreshCw className="w-4 h-4" />Try Again
-              </Button>
-              <a href={resultImage} download="try-on-result.jpg" className="flex-1">
-                <Button className="w-full gap-2">
-                  <Download className="w-4 h-4" />Download
-                </Button>
-              </a>
-            </div>
-          </div>
-        )}
+            {step === 'result' && resultImage && (
+  <div className="space-y-4">
+    <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
+      <img src={resultImage} alt="Try-on result" className="w-full h-full object-cover" />
+      <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
+        <CheckCircle className="w-3 h-3" />
+        Try-on complete
       </div>
     </div>
-  )
-}
+    <div className="bg-neutral-50 rounded-xl p-4">
+      <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
+      <ul className="text-xs text-neutral-600 space-y-2">
+        {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
+          <li key={tip} className="flex items-start gap-2">
+            <span className="text-primary mt-0.5">•</span>{tip}
+          </li>
+        ))}
+      </ul>
+    </div>
+    <div className="flex gap-2">
+      <Button variant="outline" className="gap-2" onClick={reset}>
+        <RefreshCw className="w-4 h-4" />Try Again
+      </Button>
+      <a href={resultImage} download="try-on-result.jpg" className="flex-1">
+        <Button className="w-full gap-2">
+          <Download className="w-4 h-4" />Download
+        </Button>
+      </a>
+    </div>
+  </div>
+)}
