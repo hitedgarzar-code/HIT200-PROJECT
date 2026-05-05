@@ -72,9 +72,20 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [quantity, setQuantity]         = useState(1)
   const [loading, setLoading]           = useState(true)
   const [addingToCart, setAddingToCart] = useState(false)
+  const [webGLSupported, setWebGLSupported] = useState<boolean | null>(null)
   const supabase = createClient()
   const router   = useRouter()
 
+  
+useEffect(() => {
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    setWebGLSupported(!!gl)
+  } catch {
+    setWebGLSupported(false)
+  }
+}, [])
   useEffect(() => {
     const fetchProduct = async () => {
       try {
@@ -166,17 +177,17 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
             
               
-<SplineErrorBoundary>
-  {product.sceneUrl ? (
+{product.sceneUrl && webGLSupported === true ? (
+  <SplineErrorBoundary>
     <Spline scene={product.sceneUrl} />
-  ) : (
-    <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-      {productImageUrl
-        ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover" />
-        : <p className="text-neutral-500">No preview available</p>}
-    </div>
-  )}
-</SplineErrorBoundary>
+  </SplineErrorBoundary>
+) : (
+  <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+    {productImageUrl
+      ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover rounded-2xl" />
+      : <p className="text-neutral-500">No preview available</p>}
+  </div>
+)}
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
