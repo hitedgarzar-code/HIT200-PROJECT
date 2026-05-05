@@ -48,10 +48,25 @@ export async function POST(request: NextRequest) {
                   type:   'image',
                   source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
                 },
-                {
-                  type: 'text',
-                  text: `Fashion sizing expert. What size ${category ?? 'clothing'} should this person wear? Reply ONLY with JSON: {"size":"M","confidence":"high","reason":"brief reason"} Sizes: XS S M L XL XXL`,
-                },
+               {
+  type: 'text',
+  text: `You are an expert fashion stylist and body measurement specialist. Carefully analyze this person's body proportions and suggest the most accurate clothing size for a ${category ?? 'T-Shirt'}.
+
+Look specifically at:
+- Shoulder width relative to head size
+- Chest and torso width
+- Overall body frame (petite, slim, average, athletic, plus)
+- Arm length relative to body
+- Visible waist-to-hip ratio
+
+Be SPECIFIC — do not default to M. If the person appears slim or petite, say XS or S. If they appear larger, say L, XL or XXL.
+
+Respond ONLY with this exact JSON format, no other text:
+{"size": "S", "confidence": "high", "reason": "Slim shoulders and petite frame clearly indicate a small"}
+
+Size options: XS, S, M, L, XL, XXL
+Confidence: low, medium, high`,
+},
               ],
             },
           ],
