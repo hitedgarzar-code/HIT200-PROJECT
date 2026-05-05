@@ -10,6 +10,7 @@ import { ChevronLeft, ShoppingCart, Heart, Star, Truck, RotateCcw } from 'lucide
 import { toast } from 'sonner'
 import { addToCart } from '@/components/ProductCard'
 import VirtualTryOn from '@/components/VirtualTryOn'
+import { SplineErrorBoundary } from '@/components/SplineErrorBoundary'
 
 const Spline = dynamic(() => import('@splinetool/react-spline'), {
   ssr: false,
@@ -163,8 +164,10 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
           {/* ── LEFT: 3D viewer ── */}
           <div className="space-y-4">
             <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-              {product.sceneUrl
-                ? <Spline scene={product.sceneUrl} />
+            
+              
+ {product.sceneUrl
+  ? <SplineErrorBoundary><Spline scene={product.sceneUrl} /></SplineErrorBoundary>
                 : <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
                     {productImageUrl
                       ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover" />
