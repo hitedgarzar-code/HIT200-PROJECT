@@ -40,42 +40,20 @@ function normalizeClothingType(cat?: string): string {
 
 async function analyzeSizeFromPhoto(photoDataUrl: string, category: string): Promise<string | null> {
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
+    const res = await fetch('/api/analyze-size', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/jpeg',
-                  data: photoDataUrl.replace(/^data:image\/\w+;base64,/, ''),
-                },
-              },
-              {
-                type: 'text',
-                text: `You are a fashion sizing expert. Look at this person's photo and suggest the most appropriate clothing size for them for a ${category} garment.
-
-Analyze visible body proportions — shoulder width, torso length, overall build — and return ONLY a JSON object like this, no other text:
-{"size": "M", "confidence": "high", "reason": "Broad shoulders and athletic build suggest a medium"}
-
-Size options are: XS, S, M, L, XL, XXL
-Confidence options are: low, medium, high
-
-If you cannot determine size from the photo, return:
-{"size": "M", "confidence": "low", "reason": "Could not determine size from photo"}`,
-              },
-            ],
-          },
-        ],
-      }),
+      body:    JSON.stringify({ photoDataUrl, category }),
     })
+    const data = await res.json()
+    return data.size ?? null
+  } catch {
+    return null
+  }
+}
+
+
+
 
     const data = await response.json()
     const text = data.content?.[0]?.text ?? ''
