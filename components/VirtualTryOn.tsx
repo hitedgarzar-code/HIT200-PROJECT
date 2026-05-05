@@ -186,7 +186,6 @@ const handleFile = async (file: File) => {
   try {
     const dataUrl = await resizeImageToDataUrl(file)
     setUserPhoto(dataUrl)
-    // Analyze size in background
     setIsAnalyzing(true)
     const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
     setSuggestedSize(size)
