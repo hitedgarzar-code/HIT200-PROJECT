@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
-      console.error('[analyze-size] ANTHROPIC_API_KEY is missing')
       return NextResponse.json({ size: null, error: 'API key not configured' }, { status: 500 })
     }
 
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
+        model:      'claude-opus-4-5',
         max_tokens: 200,
         messages: [
           {
@@ -50,28 +49,29 @@ Confidence options: low, medium, high`,
     })
 
     const responseText = await response.text()
-    console.log('[analyze-size] Anthropic response status:', response.status)
-    console.log('[analyze-size] Anthropic response:', responseText.slice(0, 500))
+    console.log('[analyze-size] status:', response.status)
+    console.log('[analyze-size] body:', responseText.slice(0, 800))
 
     if (!response.ok) {
-      console.error('[analyze-size] Anthropic API error:', responseText)
-      return NextResponse.json({ size: null, error: `Anthropic error: ${response.status}` }, { status: 500 })
+      return NextResponse.json({ size: null, error: `Anthropic error ${response.status}: ${responseText.slice(0, 200)}` }, { status: 500 })
     }
 
     const data = JSON.parse(responseText)
     const text = data.content?.[0]?.text ?? ''
+    console.log('[analyze-size] Claude text:', text)
+
     const clean = text.replace(/```json|```/g, '').trim()
 
     let parsed: any = {}
     try {
       parsed = JSON.parse(clean)
     } catch {
-      console.error('[analyze-size] Failed to parse Claude response:', clean)
-      return NextResponse.json({ size: null, error: 'Invalid response from Claude' }, { status: 500 })
+      console.error('[analyze-size] JSON parse failed:', clean)
+      return NextResponse.json({ size: 'M', confidence: 'low', reason: 'Default' })
     }
 
     return NextResponse.json({
-      size:       parsed.size       ?? null,
+      size:       parsed.size       ?? 'M',
       confidence: parsed.confidence ?? 'low',
       reason:     parsed.reason     ?? '',
     })
