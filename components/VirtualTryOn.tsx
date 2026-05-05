@@ -52,7 +52,7 @@ async function analyzeSizeFromPhoto(photoDataUrl: string, category: string): Pro
   }
 }
 
-function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
+function resizeImageToDataUrl(file: File, maxSide = 1600, quality = 0.9): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read image file'))
@@ -69,7 +69,7 @@ function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
         canvas.width  = width
         canvas.height = height
         ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', 0.9))
+        resolve(canvas.toDataURL('image/jpeg', quality))
       }
       img.src = reader.result as string
     }
@@ -150,7 +150,9 @@ export default function VirtualTryOn({ productName, productImage, productCategor
     setSuggestedSize(null)
     stopCamera()
     setIsAnalyzing(true)
-    const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
+    // Use low quality small version for analysis only
+    const smallDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.3)
+    const size = await analyzeSizeFromPhoto(smallDataUrl, clothingType)
     setSuggestedSize(size)
     setIsAnalyzing(false)
   }
@@ -160,10 +162,13 @@ export default function VirtualTryOn({ productName, productImage, productCategor
     if (file.size > 10 * 1024 * 1024)   { setError('File too large — maximum size is 10 MB.'); return }
     setError(null); setResultImage(null); setSuggestedSize(null)
     try {
-      const dataUrl = await resizeImageToDataUrl(file)
+      // Full quality for display and try-on
+      const dataUrl = await resizeImageToDataUrl(file, 1600, 0.9)
       setUserPhoto(dataUrl)
       setIsAnalyzing(true)
-      const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
+      // Small version for size analysis only (400px, low quality = small payload)
+      const smallDataUrl = await resizeImageToDataUrl(file, 400, 0.5)
+      const size = await analyzeSizeFromPhoto(smallDataUrl, clothingType)
       setSuggestedSize(size)
     } catch {
       setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.')
@@ -229,7 +234,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
@@ -241,7 +245,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
       </div>
 
       <div className="p-5 space-y-5">
-        {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm flex items-start gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -249,7 +252,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
           </div>
         )}
 
-        {/* ── UPLOAD STEP ── */}
         {step === 'upload' && (
           <div className="space-y-4">
             {!userPhoto && !isCameraActive && (
@@ -278,7 +280,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
               </>
             )}
 
-            {/* Camera active */}
             {isCameraActive && (
               <div className="space-y-3">
                 <div className="relative">
@@ -302,7 +303,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
               </div>
             )}
 
-            {/* Hidden refs when camera not active */}
             {!isCameraActive && (
               <>
                 <video ref={videoRef} className="hidden" autoPlay playsInline muted />
@@ -310,7 +310,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
               </>
             )}
 
-            {/* Photo preview + size suggestion + generate */}
             {userPhoto && (
               <div className="space-y-3">
                 <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
@@ -323,7 +322,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                   </button>
                 </div>
 
-                {/* Size analysis loading */}
                 {isAnalyzing && (
                   <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -331,7 +329,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                   </div>
                 )}
 
-                {/* Size suggestion result */}
                 {suggestedSize && !isAnalyzing && (
                   <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                     <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
@@ -341,6 +338,15 @@ export default function VirtualTryOn({ productName, productImage, productCategor
                       </p>
                       <p className="text-xs text-green-600">Based on your photo analysis</p>
                     </div>
+                  </div>
+                )}
+
+                {!isAnalyzing && !suggestedSize && (
+                  <div className="flex items-center gap-2 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+                    <Info className="w-4 h-4 text-neutral-400 shrink-0" />
+                    <p className="text-xs text-neutral-500">
+                      Could not determine size from photo. Please select your size on the product page.
+                    </p>
                   </div>
                 )}
 
@@ -354,7 +360,6 @@ export default function VirtualTryOn({ productName, productImage, productCategor
           </div>
         )}
 
-        {/* ── RESULT STEP ── */}
         {step === 'result' && resultImage && (
           <div className="space-y-4">
             <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
