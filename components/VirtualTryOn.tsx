@@ -79,31 +79,36 @@ export default function VirtualTryOn({ productName, productImage, productCategor
 
   const clothingType = normalizeClothingType(productCategory)
 
-  // ── FIX 1: improved startCamera with muted + onloadedmetadata ──
-  const startCamera = async () => {
-    setError(null)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(() => {})
-        }
-        setIsCameraActive(true)
-      }
-    } catch (e: any) {
-      if (e.name === 'NotAllowedError') {
-        setError('Camera permission denied. Please allow camera access in your browser settings.')
-      } else if (e.name === 'NotFoundError') {
-        setError('No camera found on this device. Please use file upload instead.')
-      } else {
-        setError('Cannot access camera. Please use file upload instead.')
+
+const startCamera = async () => {
+  setError(null)
+  setIsCameraActive(true)
+  await new Promise(r => setTimeout(r, 100))
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    })
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current?.play().catch(() => {})
       }
     }
+  } catch (e: any) {
+    setIsCameraActive(false)
+    if (e.name === 'NotAllowedError') {
+      setError('Camera permission denied. Please allow camera access in your browser settings.')
+    } else if (e.name === 'NotFoundError') {
+      setError('No camera found. Please use file upload instead.')
+    } else {
+      setError('Cannot access camera. Please use file upload instead.')
+    }
   }
+}
+
+
+
 
   const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
@@ -234,21 +239,40 @@ export default function VirtualTryOn({ productName, productImage, productCategor
               </>
             )}
 
-            {isCameraActive && (
-              <div className="space-y-3">
-                {/* ── FIX 2: added muted attribute ── */}
-                <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-xl bg-black aspect-video object-cover" />
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="flex gap-2">
-                  <Button className="flex-1" onClick={capturePhoto}>
-                    <Camera className="w-4 h-4 mr-2" />Capture
-                  </Button>
-                  <Button variant="outline" onClick={stopCamera}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+
+{isCameraActive && (
+  <div className="space-y-3">
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full rounded-xl bg-black aspect-video object-cover"
+      style={{ display: isCameraActive ? 'block' : 'none' }}
+    />
+    <canvas ref={canvasRef} className="hidden" />
+    <div className="flex gap-2">
+      <Button className="flex-1" onClick={capturePhoto}>
+        <Camera className="w-4 h-4 mr-2" />Capture
+      </Button>
+      <Button variant="outline" onClick={stopCamera}>
+        <X className="w-4 h-4" />
+      </Button>
+    </div>
+  </div>
+)}
+
+{/* Always render video/canvas hidden so refs are available */}
+{!isCameraActive && (
+  <>
+    <video ref={videoRef} className="hidden" autoPlay playsInline muted />
+    <canvas ref={canvasRef} className="hidden" />
+  </>
+)}
+
+
+
+
 
             {userPhoto && (
               <div className="space-y-3">
