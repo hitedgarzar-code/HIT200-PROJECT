@@ -15,69 +15,84 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ size: null, error: 'API key not configured' }, { status: 500 })
     }
 
-    const base64 = photoDataUrl.replace(/^data:image\/\w+;base64,/, '')
+    // Strip the data URL prefix and truncate if too large
+    let base64 = photoDataUrl.replace(/^data:image\/\w+;base64,/, '')
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-opus-4-5',
-        max_tokens: 200,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type:   'image',
-                source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
-              },
-              {
-                type: 'text',
-                text: `You are a fashion sizing expert. Look at this person and suggest the best clothing size for a ${category ?? 'T-Shirt'} garment. Respond ONLY with a JSON object, no other text:
-{"size": "M", "confidence": "high", "reason": "Athletic build with broad shoulders"}
-Size options: XS, S, M, L, XL, XXL
-Confidence options: low, medium, high`,
-              },
-            ],
-          },
-        ],
-      }),
-    })
+    // If base64 is too large (over 1MB), reject it
+    if (base64.length > 1_400_000) {
+      console.log('[analyze-size] Image too large, returning default size')
+      return NextResponse.json({ size: 'M', confidence: 'low', reason: 'Image too large for analysis' })
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20000)
+
+    let response: Response
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type':      'application/json',
+          'x-api-key':         apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model:      'claude-opus-4-5',
+          max_tokens: 100,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type:   'image',
+                  source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
+                },
+                {
+                  type: 'text',
+                  text: `Fashion sizing expert. What size ${category ?? 'clothing'} should this person wear? Reply ONLY with JSON: {"size":"M","confidence":"high","reason":"brief reason"} Sizes: XS S M L XL XXL`,
+                },
+              ],
+            },
+          ],
+        }),
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
 
     const responseText = await response.text()
     console.log('[analyze-size] status:', response.status)
-    console.log('[analyze-size] body:', responseText.slice(0, 800))
+    console.log('[analyze-size] body:', responseText.slice(0, 400))
 
     if (!response.ok) {
-      return NextResponse.json({ size: null, error: `Anthropic error ${response.status}: ${responseText.slice(0, 200)}` }, { status: 500 })
+      console.error('[analyze-size] API error:', responseText.slice(0, 300))
+      return NextResponse.json({ size: 'M', confidence: 'low', reason: 'API error' })
     }
 
     const data = JSON.parse(responseText)
-    const text = data.content?.[0]?.text ?? ''
+    const text = (data.content?.[0]?.text ?? '').replace(/```json|```/g, '').trim()
     console.log('[analyze-size] Claude text:', text)
 
-    const clean = text.replace(/```json|```/g, '').trim()
-
-    let parsed: any = {}
     try {
-      parsed = JSON.parse(clean)
+      const parsed = JSON.parse(text)
+      return NextResponse.json({
+        size:       parsed.size       ?? 'M',
+        confidence: parsed.confidence ?? 'low',
+        reason:     parsed.reason     ?? '',
+      })
     } catch {
-      console.error('[analyze-size] JSON parse failed:', clean)
-      return NextResponse.json({ size: 'M', confidence: 'low', reason: 'Default' })
+      // Try to extract just the size letter from the response
+      const match = text.match(/\b(XS|S|M|L|XL|XXL)\b/)
+      return NextResponse.json({
+        size:       match?.[1] ?? 'M',
+        confidence: 'low',
+        reason:     'Extracted from response',
+      })
     }
 
-    return NextResponse.json({
-      size:       parsed.size       ?? 'M',
-      confidence: parsed.confidence ?? 'low',
-      reason:     parsed.reason     ?? '',
-    })
-
   } catch (e: any) {
-    console.error('[analyze-size] Unexpected error:', e)
-    return NextResponse.json({ size: null, error: e?.message }, { status: 500 })
+    console.error('[analyze-size] Unexpected error:', e?.message)
+    return NextResponse.json({ size: 'M', confidence: 'low', reason: 'Analysis unavailable' })
   }
 }
