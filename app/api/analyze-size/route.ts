@@ -49,20 +49,25 @@ export async function POST(request: NextRequest) {
                   source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
                 },
                {
-  type: 'text',
-  text: `You are an expert fashion stylist and body measurement specialist. Carefully analyze this person's body proportions and suggest the most accurate clothing size for a ${category ?? 'T-Shirt'}.
+  text: `You are a clothing size measurement tool. Analyze the clothing this person is currently wearing and their visible body frame to determine what size they would need for a new ${category ?? 'T-Shirt'}.
 
-Look specifically at:
-- Shoulder width relative to head size
-- Chest and torso width
-- Overall body frame (petite, slim, average, athletic, plus)
-- Arm length relative to body
-- Visible waist-to-hip ratio
+Analyze objectively:
+1. How much fabric is stretching or pulling on their current clothing
+2. Whether their current clothing appears tight, fitted, or loose
+3. The visible width of shoulders compared to an average frame
+4. Overall body width from left to right in the frame
 
-Be SPECIFIC — do not default to M. If the person appears slim or petite, say XS or S. If they appear larger, say L, XL or XXL.
+Rules:
+- If clothing appears very tight or stretched: go 2 sizes up
+- If clothing appears tight: go 1 size up  
+- If clothing fits well: use that apparent size
+- If clothing appears loose: go 1 size down
+- A very large frame with stretched clothing = XXL or above
 
-Respond ONLY with this exact JSON format, no other text:
-{"size": "S", "confidence": "high", "reason": "Slim shoulders and petite frame clearly indicate a small"}
+Be accurate and objective. Do NOT default to M.
+
+Respond ONLY with this JSON, no other text:
+{"size": "XXL", "confidence": "high", "reason": "Clothing appears significantly stretched indicating XXL frame"}
 
 Size options: XS, S, M, L, XL, XXL
 Confidence: low, medium, high`,
