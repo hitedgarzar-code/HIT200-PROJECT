@@ -52,20 +52,6 @@ async function analyzeSizeFromPhoto(photoDataUrl: string, category: string): Pro
   }
 }
 
-
-
-
-    const data = await response.json()
-    const text = data.content?.[0]?.text ?? ''
-    const clean = text.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(clean)
-    return parsed.size ?? null
-  } catch {
-    return null
-  }
-}
-
-
 function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -74,13 +60,13 @@ function resizeImageToDataUrl(file: File, maxSide = 1600): Promise<string> {
       const img = new Image()
       img.onerror = () => reject(new Error('Could not load image file'))
       img.onload = () => {
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height))
-        const width = Math.max(1, Math.round(img.width * scale))
+        const scale  = Math.min(1, maxSide / Math.max(img.width, img.height))
+        const width  = Math.max(1, Math.round(img.width  * scale))
         const height = Math.max(1, Math.round(img.height * scale))
         const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
+        const ctx    = canvas.getContext('2d')
         if (!ctx) { reject(new Error('Could not process image file')); return }
-        canvas.width = width
+        canvas.width  = width
         canvas.height = height
         ctx.drawImage(img, 0, 0, width, height)
         resolve(canvas.toDataURL('image/jpeg', 0.9))
@@ -96,61 +82,19 @@ export default function VirtualTryOn({ productName, productImage, productCategor
   const [step, setStep]                     = useState<Step>('upload')
   const [userPhoto, setUserPhoto]           = useState<string | null>(null)
   const [isCameraActive, setIsCameraActive] = useState(false)
+  const [facingMode, setFacingMode]         = useState<'user' | 'environment'>('user')
   const [dragOver, setDragOver]             = useState(false)
   const [isGenerating, setIsGenerating]     = useState(false)
   const [resultImage, setResultImage]       = useState<string | null>(null)
   const [error, setError]                   = useState<string | null>(null)
+  const [suggestedSize, setSuggestedSize]   = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing]       = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoRef     = useRef<HTMLVideoElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
 
   const clothingType = normalizeClothingType(productCategory)
-
-
-
-
-const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
-  const [suggestedSize, setSuggestedSize] = useState<string | null>(null)
-const [isAnalyzing, setIsAnalyzing]     = useState(false)
-
-  
-const startCamera = async (facing: 'user' | 'environment' = facingMode) => {
-  setError(null)
-  stopCamera()
-  setIsCameraActive(true)
-  await new Promise(r => setTimeout(r, 100))
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    })
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream
-      videoRef.current.onloadedmetadata = () => {
-        videoRef.current?.play().catch(() => {})
-      }
-    }
-  } catch (e: any) {
-    setIsCameraActive(false)
-    if (e.name === 'NotAllowedError') {
-      setError('Camera permission denied. Please allow camera access in your browser settings.')
-    } else if (e.name === 'NotFoundError') {
-      setError('No camera found. Please use file upload instead.')
-    } else {
-      setError('Cannot access camera. Please use file upload instead.')
-    }
-  }
-}
-
-const flipCamera = () => {
-  const newFacing = facingMode === 'user' ? 'environment' : 'user'
-  setFacingMode(newFacing)
-  void startCamera(newFacing)
-}
-
-
-
 
   const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
@@ -160,42 +104,73 @@ const flipCamera = () => {
     }
   }, [])
 
-const capturePhoto = async () => {
-  if (!videoRef.current || !canvasRef.current) return
-  const ctx = canvasRef.current.getContext('2d')!
-  canvasRef.current.width  = videoRef.current.videoWidth
-  canvasRef.current.height = videoRef.current.videoHeight
-  ctx.drawImage(videoRef.current, 0, 0)
-  const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9)
-  setUserPhoto(dataUrl)
-  setResultImage(null)
-  setSuggestedSize(null)
-  stopCamera()
-  // Analyze size in background
-  setIsAnalyzing(true)
-  const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
-  setSuggestedSize(size)
-  setIsAnalyzing(false)
-}
+  const startCamera = async (facing: 'user' | 'environment' = facingMode) => {
+    setError(null)
+    stopCamera()
+    setIsCameraActive(true)
+    await new Promise(r => setTimeout(r, 100))
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {})
+        }
+      }
+    } catch (e: any) {
+      setIsCameraActive(false)
+      if (e.name === 'NotAllowedError') {
+        setError('Camera permission denied. Please allow camera access in your browser settings.')
+      } else if (e.name === 'NotFoundError') {
+        setError('No camera found. Please use file upload instead.')
+      } else {
+        setError('Cannot access camera. Please use file upload instead.')
+      }
+    }
+  }
 
+  const flipCamera = () => {
+    const newFacing = facingMode === 'user' ? 'environment' : 'user'
+    setFacingMode(newFacing)
+    void startCamera(newFacing)
+  }
 
-const handleFile = async (file: File) => {
-  if (!file.type.startsWith('image/')) { setError('Please upload an image file (JPG, PNG, or WEBP).'); return }
-  if (file.size > 10 * 1024 * 1024)   { setError('File too large — maximum size is 10 MB.'); return }
-  setError(null); setResultImage(null); setSuggestedSize(null)
-  try {
-    const dataUrl = await resizeImageToDataUrl(file)
+  const capturePhoto = async () => {
+    if (!videoRef.current || !canvasRef.current) return
+    const ctx = canvasRef.current.getContext('2d')!
+    canvasRef.current.width  = videoRef.current.videoWidth
+    canvasRef.current.height = videoRef.current.videoHeight
+    ctx.drawImage(videoRef.current, 0, 0)
+    const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9)
     setUserPhoto(dataUrl)
+    setResultImage(null)
+    setSuggestedSize(null)
+    stopCamera()
     setIsAnalyzing(true)
     const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
     setSuggestedSize(size)
-  } catch {
-    setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.')
-  } finally {
     setIsAnalyzing(false)
   }
-}
-  
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) { setError('Please upload an image file (JPG, PNG, or WEBP).'); return }
+    if (file.size > 10 * 1024 * 1024)   { setError('File too large — maximum size is 10 MB.'); return }
+    setError(null); setResultImage(null); setSuggestedSize(null)
+    try {
+      const dataUrl = await resizeImageToDataUrl(file)
+      setUserPhoto(dataUrl)
+      setIsAnalyzing(true)
+      const size = await analyzeSizeFromPhoto(dataUrl, clothingType)
+      setSuggestedSize(size)
+    } catch {
+      setError('Could not read this image. Please try another JPG, PNG, or WEBP photo.')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (f) void handleFile(f)
@@ -211,7 +186,7 @@ const handleFile = async (file: File) => {
     setIsGenerating(true); setError(null); setResultImage(null)
     try {
       const res = await fetch('/api/virtual-tryon', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productImage,
@@ -223,8 +198,8 @@ const handleFile = async (file: File) => {
       const ct = res.headers.get('content-type') ?? ''
       if (!ct.includes('application/json')) throw new Error('Try-on service returned an invalid response')
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Generation failed')
-      if (!data.image) throw new Error(data.message || 'No image returned by try-on service')
+      if (!res.ok)       throw new Error(data.error    || 'Generation failed')
+      if (!data.image)   throw new Error(data.message  || 'No image returned by try-on service')
       if (data.fallback) throw new Error('The service returned a preview. Check your API key and try again.')
       setResultImage(data.image)
       setStep('result')
@@ -236,7 +211,8 @@ const handleFile = async (file: File) => {
   }
 
   const reset = () => {
-    setStep('upload'); setUserPhoto(null); setResultImage(null); setError(null); stopCamera()
+    setStep('upload'); setUserPhoto(null); setResultImage(null)
+    setError(null); setSuggestedSize(null); stopCamera()
   }
 
   if (!isOpen) {
@@ -253,6 +229,7 @@ const handleFile = async (file: File) => {
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-primary" />
@@ -264,6 +241,7 @@ const handleFile = async (file: File) => {
       </div>
 
       <div className="p-5 space-y-5">
+        {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm flex items-start gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -271,6 +249,7 @@ const handleFile = async (file: File) => {
           </div>
         )}
 
+        {/* ── UPLOAD STEP ── */}
         {step === 'upload' && (
           <div className="space-y-4">
             {!userPhoto && !isCameraActive && (
@@ -292,121 +271,122 @@ const handleFile = async (file: File) => {
                   <span className="text-xs text-neutral-400">or</span>
                   <div className="flex-1 h-px bg-neutral-200" />
                 </div>
-                <Button variant="outline" className="w-full gap-2" onClick={startCamera}>
+                <Button variant="outline" className="w-full gap-2" onClick={() => startCamera()}>
                   <Camera className="w-4 h-4" />
                   Take a photo
                 </Button>
               </>
             )}
 
+            {/* Camera active */}
+            {isCameraActive && (
+              <div className="space-y-3">
+                <div className="relative">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-xl bg-black aspect-video object-cover" />
+                  <button onClick={flipCamera} className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all" title="Flip camera">
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <div className="absolute bottom-2 left-2 bg-black/40 text-white text-xs px-2 py-1 rounded-full">
+                    {facingMode === 'user' ? '🤳 Front' : '📷 Back'}
+                  </div>
+                </div>
+                <canvas ref={canvasRef} className="hidden" />
+                <div className="flex gap-2">
+                  <Button className="flex-1" onClick={capturePhoto}>
+                    <Camera className="w-4 h-4 mr-2" />Capture
+                  </Button>
+                  <Button variant="outline" onClick={stopCamera}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
-{isCameraActive && (
-  <div className="space-y-3">
-    <div className="relative">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="w-full rounded-xl bg-black aspect-video object-cover"
-      />
-      <button
-        onClick={flipCamera}
-        className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all"
-        title="Flip camera"
-      >
-        <RefreshCw className="w-4 h-4" />
-      </button>
-      <div className="absolute bottom-2 left-2 bg-black/40 text-white text-xs px-2 py-1 rounded-full">
-        {facingMode === 'user' ? '🤳 Front' : '📷 Back'}
+            {/* Hidden refs when camera not active */}
+            {!isCameraActive && (
+              <>
+                <video ref={videoRef} className="hidden" autoPlay playsInline muted />
+                <canvas ref={canvasRef} className="hidden" />
+              </>
+            )}
+
+            {/* Photo preview + size suggestion + generate */}
+            {userPhoto && (
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
+                  <img src={userPhoto} alt="Your photo" className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => { setUserPhoto(null); setResultImage(null); setSuggestedSize(null) }}
+                    className="absolute top-2 right-2 bg-white/80 rounded-full p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Size analysis loading */}
+                {isAnalyzing && (
+                  <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Analysing your photo for size recommendation…
+                  </div>
+                )}
+
+                {/* Size suggestion result */}
+                {suggestedSize && !isAnalyzing && (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-green-800">
+                        Recommended size: <span className="text-base font-bold">{suggestedSize}</span>
+                      </p>
+                      <p className="text-xs text-green-600">Based on your photo analysis</p>
+                    </div>
+                  </div>
+                )}
+
+                <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
+                  {isGenerating
+                    ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
+                    : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── RESULT STEP ── */}
+        {step === 'result' && resultImage && (
+          <div className="space-y-4">
+            <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
+              <img src={resultImage} alt="Try-on result" className="w-full h-full object-cover" />
+              <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                Try-on complete
+              </div>
+            </div>
+            <div className="bg-neutral-50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
+              <ul className="text-xs text-neutral-600 space-y-2">
+                {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
+                  <li key={tip} className="flex items-start gap-2">
+                    <span className="text-primary mt-0.5">•</span>{tip}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="gap-2" onClick={reset}>
+                <RefreshCw className="w-4 h-4" />Try Again
+              </Button>
+              <a href={resultImage} download="try-on-result.jpg" className="flex-1">
+                <Button className="w-full gap-2">
+                  <Download className="w-4 h-4" />Download
+                </Button>
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-    <canvas ref={canvasRef} className="hidden" />
-    <div className="flex gap-2">
-      <Button className="flex-1" onClick={capturePhoto}>
-        <Camera className="w-4 h-4 mr-2" />Capture
-      </Button>
-      <Button variant="outline" onClick={stopCamera}>
-        <X className="w-4 h-4" />
-      </Button>
-    </div>
-  </div>
-)}
-
-{!isCameraActive && (
-  <>
-    <video ref={videoRef} className="hidden" autoPlay playsInline muted />
-    <canvas ref={canvasRef} className="hidden" />
-  </>
-)}
-
-{userPhoto && (
-  <div className="space-y-3">
-    <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
-      <img src={userPhoto} alt="Your photo" className="w-full h-full object-cover" />
-      <button
-        onClick={() => { setUserPhoto(null); setResultImage(null); setSuggestedSize(null) }}
-        className="absolute top-2 right-2 bg-white/80 rounded-full p-1"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-
-    {/* ── Size suggestion goes HERE inside userPhoto block ── */}
-    {isAnalyzing && (
-      <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Analysing your photo for size recommendation…
-      </div>
-    )}
-    {suggestedSize && !isAnalyzing && (
-      <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-        <div>
-          <p className="text-xs font-semibold text-green-800">
-            Recommended size: <span className="text-base font-bold">{suggestedSize}</span>
-          </p>
-          <p className="text-xs text-green-600">Based on your photo analysis</p>
-        </div>
-      </div>
-    )}
-
-    <Button className="w-full gap-2" onClick={generate} disabled={isGenerating}>
-      {isGenerating
-        ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
-        : <><Sparkles className="w-4 h-4" />Generate Try-On</>}
-    </Button>
-  </div>
-)}
-
-            {step === 'result' && resultImage && (
-  <div className="space-y-4">
-    <div className="relative rounded-xl overflow-hidden aspect-[3/4] bg-neutral-100">
-      <img src={resultImage} alt="Try-on result" className="w-full h-full object-cover" />
-      <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-semibold px-2 py-1 rounded-full flex items-center gap-1">
-        <CheckCircle className="w-3 h-3" />
-        Try-on complete
-      </div>
-    </div>
-    <div className="bg-neutral-50 rounded-xl p-4">
-      <p className="text-xs font-semibold text-neutral-700 mb-3">Style Tips</p>
-      <ul className="text-xs text-neutral-600 space-y-2">
-        {(STYLE_TIPS[clothingType] ?? STYLE_TIPS['T-Shirts']).map(tip => (
-          <li key={tip} className="flex items-start gap-2">
-            <span className="text-primary mt-0.5">•</span>{tip}
-          </li>
-        ))}
-      </ul>
-    </div>
-    <div className="flex gap-2">
-      <Button variant="outline" className="gap-2" onClick={reset}>
-        <RefreshCw className="w-4 h-4" />Try Again
-      </Button>
-      <a href={resultImage} download="try-on-result.jpg" className="flex-1">
-        <Button className="w-full gap-2">
-          <Download className="w-4 h-4" />Download
-        </Button>
-      </a>
-    </div>
-  </div>
-)}
+  )
+}
