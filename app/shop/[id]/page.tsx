@@ -166,14 +166,17 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
             <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
             
               
- {product.sceneUrl
-  ? <SplineErrorBoundary><Spline scene={product.sceneUrl} /></SplineErrorBoundary>
-                : <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-                    {productImageUrl
-                      ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover" />
-                      : <p className="text-neutral-500">No preview available</p>}
-                  </div>
-              }
+<SplineErrorBoundary>
+  {product.sceneUrl ? (
+    <Spline scene={product.sceneUrl} />
+  ) : (
+    <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+      {productImageUrl
+        ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover" />
+        : <p className="text-neutral-500">No preview available</p>}
+    </div>
+  )}
+</SplineErrorBoundary>
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
