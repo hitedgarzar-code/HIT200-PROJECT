@@ -80,13 +80,19 @@ export default function VirtualTryOn({ productName, productImage, productCategor
   const clothingType = normalizeClothingType(productCategory)
 
 
-const startCamera = async () => {
+
+
+const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+
+  
+const startCamera = async (facing: 'user' | 'environment' = facingMode) => {
   setError(null)
+  stopCamera()
   setIsCameraActive(true)
   await new Promise(r => setTimeout(r, 100))
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false,
     })
     if (videoRef.current) {
@@ -105,6 +111,12 @@ const startCamera = async () => {
       setError('Cannot access camera. Please use file upload instead.')
     }
   }
+}
+
+const flipCamera = () => {
+  const newFacing = facingMode === 'user' ? 'environment' : 'user'
+  setFacingMode(newFacing)
+  void startCamera(newFacing)
 }
 
 
@@ -242,14 +254,27 @@ const startCamera = async () => {
 
 {isCameraActive && (
   <div className="space-y-3">
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted
-      className="w-full rounded-xl bg-black aspect-video object-cover"
-      style={{ display: isCameraActive ? 'block' : 'none' }}
-    />
+    <div className="relative">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full rounded-xl bg-black aspect-video object-cover"
+      />
+      {/* Flip camera button overlay */}
+      <button
+        onClick={flipCamera}
+        className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-all"
+        title="Flip camera"
+      >
+        <RefreshCw className="w-4 h-4" />
+      </button>
+      {/* Camera label */}
+      <div className="absolute bottom-2 left-2 bg-black/40 text-white text-xs px-2 py-1 rounded-full">
+        {facingMode === 'user' ? '🤳 Front' : '📷 Back'}
+      </div>
+    </div>
     <canvas ref={canvasRef} className="hidden" />
     <div className="flex gap-2">
       <Button className="flex-1" onClick={capturePhoto}>
@@ -262,7 +287,6 @@ const startCamera = async () => {
   </div>
 )}
 
-{/* Always render video/canvas hidden so refs are available */}
 {!isCameraActive && (
   <>
     <video ref={videoRef} className="hidden" autoPlay playsInline muted />
