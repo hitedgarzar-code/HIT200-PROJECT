@@ -32,7 +32,8 @@ interface UserProfile {
   user_metadata?: { full_name?: string; is_admin?: boolean }
 }
 interface Order {
-  id: string; user_id: string; total?: number; total_amount?: number
+  id: string; user_id: string; 
+  total?: number; total_amount?: number; subtotal?: number
   status: string; payment_method?: string; created_at: string
   order_items?: any[]; items?: any[]; payment_status?: string
 }
@@ -155,7 +156,7 @@ export default function AdminDashboard() {
 
   const loadOrders = async()=>{
     const { data,error } = await supabase
-      .from('orders').select('*, order_items(*)')
+  .from('orders').select('*, total, subtotal, order_items(*)')
       .order('created_at',{ascending:false}).limit(500)
     if (error) { toast.error('Orders: '+error.message); return }
     if (data) {
