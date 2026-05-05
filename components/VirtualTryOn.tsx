@@ -144,7 +144,8 @@ export default function VirtualTryOn({ productName, productImage, productCategor
     canvasRef.current.width  = videoRef.current.videoWidth
     canvasRef.current.height = videoRef.current.videoHeight
     ctx.drawImage(videoRef.current, 0, 0)
-    const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9)
+
+    const smallDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6)
     setUserPhoto(dataUrl)
     setResultImage(null)
     setSuggestedSize(null)
@@ -167,7 +168,8 @@ export default function VirtualTryOn({ productName, productImage, productCategor
       setUserPhoto(dataUrl)
       setIsAnalyzing(true)
       // Small version for size analysis only (400px, low quality = small payload)
-      const smallDataUrl = await resizeImageToDataUrl(file, 400, 0.5)
+      
+      const smallDataUrl = await resizeImageToDataUrl(file, 600, 0.7)
       const size = await analyzeSizeFromPhoto(smallDataUrl, clothingType)
       setSuggestedSize(size)
     } catch {
