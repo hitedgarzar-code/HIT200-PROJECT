@@ -7,7 +7,13 @@ export async function POST(request: NextRequest) {
     const { photoDataUrl, category } = await request.json()
 
     if (!photoDataUrl) {
-      return NextResponse.json({ size: null }, { status: 400 })
+      return NextResponse.json({ size: null, error: 'No photo provided' }, { status: 400 })
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      console.error('[analyze-size] ANTHROPIC_API_KEY is missing')
+      return NextResponse.json({ size: null, error: 'API key not configured' }, { status: 500 })
     }
 
     const base64 = photoDataUrl.replace(/^data:image\/\w+;base64,/, '')
@@ -16,11 +22,11 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type':      'application/json',
-        'x-api-key':         process.env.ANTHROPIC_API_KEY ?? '',
+        'x-api-key':         apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
+        model:      'claude-haiku-4-5-20251001',
         max_tokens: 200,
         messages: [
           {
@@ -32,7 +38,7 @@ export async function POST(request: NextRequest) {
               },
               {
                 type: 'text',
-                text: `You are a fashion sizing expert. Look at this person and suggest the best clothing size for a ${category} garment. Respond ONLY with a JSON object, no other text:
+                text: `You are a fashion sizing expert. Look at this person and suggest the best clothing size for a ${category ?? 'T-Shirt'} garment. Respond ONLY with a JSON object, no other text:
 {"size": "M", "confidence": "high", "reason": "Athletic build with broad shoulders"}
 Size options: XS, S, M, L, XL, XXL
 Confidence options: low, medium, high`,
@@ -43,18 +49,35 @@ Confidence options: low, medium, high`,
       }),
     })
 
-    const data = await response.json()
+    const responseText = await response.text()
+    console.log('[analyze-size] Anthropic response status:', response.status)
+    console.log('[analyze-size] Anthropic response:', responseText.slice(0, 500))
+
+    if (!response.ok) {
+      console.error('[analyze-size] Anthropic API error:', responseText)
+      return NextResponse.json({ size: null, error: `Anthropic error: ${response.status}` }, { status: 500 })
+    }
+
+    const data = JSON.parse(responseText)
     const text = data.content?.[0]?.text ?? ''
     const clean = text.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(clean)
+
+    let parsed: any = {}
+    try {
+      parsed = JSON.parse(clean)
+    } catch {
+      console.error('[analyze-size] Failed to parse Claude response:', clean)
+      return NextResponse.json({ size: null, error: 'Invalid response from Claude' }, { status: 500 })
+    }
 
     return NextResponse.json({
-      size:       parsed.size ?? null,
+      size:       parsed.size       ?? null,
       confidence: parsed.confidence ?? 'low',
-      reason:     parsed.reason ?? '',
+      reason:     parsed.reason     ?? '',
     })
+
   } catch (e: any) {
-    console.error('[analyze-size] error:', e)
-    return NextResponse.json({ size: null }, { status: 500 })
+    console.error('[analyze-size] Unexpected error:', e)
+    return NextResponse.json({ size: null, error: e?.message }, { status: 500 })
   }
 }
