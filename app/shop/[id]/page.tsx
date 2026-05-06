@@ -9,6 +9,8 @@ import { ChevronLeft, ShoppingCart, Heart, Star, Truck, RotateCcw } from 'lucide
 import { toast } from 'sonner'
 import { addToCart } from '@/components/ProductCard'
 import VirtualTryOn from '@/components/VirtualTryOn'
+import SplineProductViewer from '@/components/SplineProductViewer'
+import { SplineErrorBoundary } from '@/components/SplineErrorBoundary'
 
 const SPLINE_PRODUCTS: Record<string, any> = {
   'spline-1': {
@@ -144,43 +146,48 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
       <div className="max-w-7xl mx-auto px-4 pb-20">
         <div className="grid lg:grid-cols-2 gap-12 mt-8">
 
-         {/* ── LEFT: Product image / Spline 3D ── */}
-<div className="space-y-4">
-  <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-    <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-      {product.sceneUrl ? (
-        <iframe
-          src={product.sceneUrl.replace('.splinecode', '')}
-          frameBorder="0"
-          width="100%"
-          height="100%"
-          style={{ minHeight: '400px' }}
-          title={product.name}
-          allow="autoplay"
-        />
-      ) : productImageUrl ? (
-        <img
-          src={productImageUrl}
-          alt={product.name}
-          className="w-full h-full object-cover"
-        />
-      ) : (
-        <p className="text-neutral-500">No preview available</p>
-      )}
-    </div>
-  </div>
-  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-    <RotateCcw className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-    <div>
-      <p className="font-semibold text-blue-900 text-sm">
-        {product.sceneUrl ? '3D Interactive Preview' : 'Product Preview'}
-      </p>
-      <p className="text-xs text-blue-700 mt-1">
-        {product.sceneUrl ? 'Drag to rotate • Scroll to zoom' : 'High quality product image'}
-      </p>
-    </div>
-  </div>
-</div>
+          {/* ── LEFT: 3D Viewer or Product image ── */}
+          <div className="space-y-4">
+            {product.sceneUrl ? (
+              <>
+                <SplineErrorBoundary>
+                  <SplineProductViewer
+                    sceneUrl={product.sceneUrl}
+                    productName={product.name}
+                  />
+                </SplineErrorBoundary>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                  <RotateCcw className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-blue-900 text-sm">Interactive 3D Preview</p>
+                    <p className="text-xs text-blue-700 mt-1">Drag to rotate · Scroll to zoom · Click fullscreen</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
+                  <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+                    {productImageUrl
+                      ? <img
+                          src={productImageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      : <p className="text-neutral-500">No preview available</p>
+                    }
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                  <RotateCcw className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-blue-900 text-sm">Product Preview</p>
+                    <p className="text-xs text-blue-700 mt-1">High quality product image</p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* ── RIGHT: Product details ── */}
           <div className="space-y-8">
