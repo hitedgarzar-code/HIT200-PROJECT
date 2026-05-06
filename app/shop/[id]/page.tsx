@@ -3,26 +3,12 @@
 import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ShoppingCart, Heart, Star, Truck, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { addToCart } from '@/components/ProductCard'
 import VirtualTryOn from '@/components/VirtualTryOn'
-import { SplineErrorBoundary } from '@/components/SplineErrorBoundary'
-
-const Spline = dynamic(() => import('@splinetool/react-spline'), {
-  ssr: false,
-  loading: () => (
-    <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 rounded-2xl flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-        <p className="text-sm text-neutral-500">Loading 3D model...</p>
-      </div>
-    </div>
-  ),
-})
 
 const SPLINE_PRODUCTS: Record<string, any> = {
   'spline-1': {
@@ -72,20 +58,9 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [quantity, setQuantity]         = useState(1)
   const [loading, setLoading]           = useState(true)
   const [addingToCart, setAddingToCart] = useState(false)
-  const [webGLSupported, setWebGLSupported] = useState<boolean | null>(null)
   const supabase = createClient()
   const router   = useRouter()
 
-  
-useEffect(() => {
-  try {
-    const canvas = document.createElement('canvas')
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-    setWebGLSupported(!!gl)
-  } catch {
-    setWebGLSupported(false)
-  }
-}, [])
   useEffect(() => {
     const fetchProduct = async () => {
       try {
@@ -122,7 +97,6 @@ useEffect(() => {
   const handleAddToCart = () => {
     if (!selectedSize) { toast.error('Please select a size'); return }
     setAddingToCart(true)
-
     addToCart({
       product_id: product!.id,
       name:       product!.name,
@@ -131,12 +105,10 @@ useEffect(() => {
       quantity,
       image_url:  product!.image_url || '',
     })
-
     toast.success(`${product!.name} (Size ${selectedSize}) added to cart!`, {
       description: `Quantity: ${quantity}`,
       action: { label: 'View Cart', onClick: () => router.push('/cart') },
     })
-
     setTimeout(() => setAddingToCart(false), 400)
   }
 
@@ -172,34 +144,30 @@ useEffect(() => {
       <div className="max-w-7xl mx-auto px-4 pb-20">
         <div className="grid lg:grid-cols-2 gap-12 mt-8">
 
-          {/* ── LEFT: 3D viewer ── */}
+          {/* ── LEFT: Product image ── */}
           <div className="space-y-4">
             <div className="bg-white rounded-2xl overflow-hidden shadow-lg">
-            
-              
-{product.sceneUrl && webGLSupported === true ? (
-  <SplineErrorBoundary>
-    <Spline scene={product.sceneUrl} />
-  </SplineErrorBoundary>
-) : (
-  <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-    {productImageUrl
-      ? <img src={productImageUrl} alt={product.name} className="w-full h-full object-cover rounded-2xl" />
-      : <p className="text-neutral-500">No preview available</p>}
-  </div>
-)}
+              <div className="aspect-square bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+                {productImageUrl
+                  ? <img
+                      src={productImageUrl}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                    />
+                  : <p className="text-neutral-500">No preview available</p>
+                }
+              </div>
             </div>
-
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
               <RotateCcw className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-blue-900 text-sm">Interactive 3D Model</p>
-                <p className="text-xs text-blue-700 mt-1">Click and drag to rotate. Scroll to zoom.</p>
+                <p className="font-semibold text-blue-900 text-sm">Product Preview</p>
+                <p className="text-xs text-blue-700 mt-1">High quality product image</p>
               </div>
             </div>
           </div>
 
-          {/* ── RIGHT: Product details + Virtual Try-On ── */}
+          {/* ── RIGHT: Product details ── */}
           <div className="space-y-8">
             <div>
               {product.badge && (
@@ -266,7 +234,7 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* ── Virtual Try-On ── */}
+            {/* Virtual Try-On */}
             <div>
               <h3 className="text-lg font-semibold text-primary mb-3">Virtual Try-On</h3>
               <p className="text-sm text-muted-foreground mb-3">
