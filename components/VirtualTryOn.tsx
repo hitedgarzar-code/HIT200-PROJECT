@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles, Camera, Upload, X, Loader2, Download,
@@ -81,23 +81,48 @@ export default function VirtualTryOn({ productName, productImage, productCategor
   const clothingType = normalizeClothingType(productCategory)
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      ;(videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop())
-      videoRef.current.srcObject = null
-      setIsCameraActive(false)
+    const video = videoRef.current
+    const stream = video?.srcObject
+
+    if (stream && 'getTracks' in stream) {
+      stream.getTracks().forEach(track => track.stop())
     }
+
+    if (video) {
+      video.pause()
+      video.srcObject = null
+      video.onloadedmetadata = null
+    }
+
+    setIsCameraActive(false)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      stopCamera()
+    }
+  }, [stopCamera])
 
   const startCamera = async (facing: 'user' | 'environment' = facingMode) => {
     setError(null)
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setIsCameraActive(false)
+      setError('Your browser does not support camera capture. Please upload a photo instead.')
+      return
+    }
+
     stopCamera()
     setIsCameraActive(true)
-    await new Promise(r => setTimeout(r, 100))
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       })
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         videoRef.current.onloadedmetadata = () => {
@@ -106,9 +131,9 @@ export default function VirtualTryOn({ productName, productImage, productCategor
       }
     } catch (e: any) {
       setIsCameraActive(false)
-      if (e.name === 'NotAllowedError') {
+      if (e?.name === 'NotAllowedError') {
         setError('Camera permission denied. Please allow camera access in your browser settings.')
-      } else if (e.name === 'NotFoundError') {
+      } else if (e?.name === 'NotFoundError') {
         setError('No camera found. Please use file upload instead.')
       } else {
         setError('Cannot access camera. Please use file upload instead.')
@@ -123,12 +148,30 @@ export default function VirtualTryOn({ productName, productImage, productCategor
   }
 
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return
-    const ctx = canvasRef.current.getContext('2d')!
-    canvasRef.current.width  = videoRef.current.videoWidth
-    canvasRef.current.height = videoRef.current.videoHeight
-    ctx.drawImage(videoRef.current, 0, 0)
-    const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.9)
+    const video = videoRef.current
+    const canvas = canvasRef.current
+
+    if (!video || !canvas) {
+      setError('Camera is not ready yet. Please try again in a moment.')
+      return
+    }
+
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      setError('Camera is still loading. Please try again in a moment.')
+      return
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      setError('Could not prepare your photo. Please try again.')
+      return
+    }
+
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    ctx.drawImage(video, 0, 0)
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
     setUserPhoto(dataUrl)
     setResultImage(null)
     stopCamera()
@@ -193,7 +236,7 @@ export default function VirtualTryOn({ productName, productImage, productCategor
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all text-primary font-medium text-sm"
+        className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all text-primary font-semibold"
       >
         <Sparkles className="w-4 h-4" />
         Virtual Try-On: {productName}
